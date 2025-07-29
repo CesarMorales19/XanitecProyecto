@@ -1,0 +1,132 @@
+-- 1. Agregar almacén
+CREATE OR ALTER PROCEDURE agregar_almacen
+    @nombre NVARCHAR(100),
+    @ubicacion NVARCHAR(255),
+    @responsable NVARCHAR(100)
+AS
+BEGIN
+    INSERT INTO almacenes (nombre, ubicacion, responsable)
+    VALUES (@nombre, @ubicacion, @responsable)
+END
+GO
+
+-- 2. Editar almacén
+CREATE OR ALTER PROCEDURE editar_almacen
+    @id INT,
+    @nombre NVARCHAR(100),
+    @ubicacion NVARCHAR(255),
+    @responsable NVARCHAR(100)
+AS
+BEGIN
+    UPDATE almacenes
+    SET nombre = @nombre,
+        ubicacion = @ubicacion,
+        responsable = @responsable
+    WHERE id = @id
+END
+GO
+
+-- 3. Eliminar almacén
+CREATE OR ALTER PROCEDURE eliminar_almacen
+    @id INT
+AS
+BEGIN
+    DELETE FROM almacenes WHERE id = @id
+END
+GO
+
+-- 4. Listar almacenes
+CREATE OR ALTER PROCEDURE listar_almacenes
+AS
+BEGIN
+    SELECT id, nombre FROM almacenes
+END
+GO
+
+-- 5. Listar inventario (con filtro opcional)
+CREATE OR ALTER PROCEDURE listar_inventario
+    @id_almacen INT = NULL
+AS
+BEGIN
+    IF @id_almacen IS NULL
+    BEGIN
+        SELECT p.id, p.nombre, p.descripcion, p.imagen, p.precio, p.cantidad, a.nombre AS almacen_nombre
+        FROM productos p
+        JOIN almacenes a ON p.almacen_id = a.id
+    END
+    ELSE
+    BEGIN
+        SELECT p.id, p.nombre, p.descripcion, p.imagen, p.precio, p.cantidad, a.nombre AS almacen_nombre
+        FROM productos p
+        JOIN almacenes a ON p.almacen_id = a.id
+        WHERE p.almacen_id = @id_almacen
+    END
+END
+GO
+
+-- 6. Listar movimientos
+CREATE OR ALTER PROCEDURE listar_movimientos
+AS
+BEGIN
+    SELECT * FROM movimientos ORDER BY fecha_movimiento DESC
+END
+GO
+
+-- 7. Registrar movimiento
+CREATE OR ALTER PROCEDURE registrar_movimiento
+    @usuario NVARCHAR(100),
+    @accion NVARCHAR(50),
+    @modulo NVARCHAR(50),
+    @descripcion NVARCHAR(MAX)
+AS
+BEGIN
+    INSERT INTO movimientos (usuario, accion, modulo, descripcion)
+    VALUES (@usuario, @accion, @modulo, @descripcion)
+END
+GO
+
+-- 8. Agregar producto
+CREATE OR ALTER PROCEDURE agregar_producto
+    @nombre NVARCHAR(100),
+    @descripcion NVARCHAR(MAX),
+    @precio DECIMAL(10,2),
+    @cantidad INT,
+    @almacen_id INT,
+    @imagen NVARCHAR(255)
+AS
+BEGIN
+    INSERT INTO productos (nombre, descripcion, precio, cantidad, almacen_id, imagen)
+    VALUES (@nombre, @descripcion, @precio, @cantidad, @almacen_id, @imagen)
+END
+GO
+
+-- 9. Editar producto
+CREATE OR ALTER PROCEDURE editar_producto
+    @id INT,
+    @almacen_id INT,
+    @nombre NVARCHAR(100),
+    @descripcion NVARCHAR(MAX),
+    @precio DECIMAL(10,2),
+    @cantidad INT,
+    @imagen NVARCHAR(255)
+AS
+BEGIN
+    UPDATE productos
+    SET nombre = @nombre,
+        descripcion = @descripcion,
+        precio = @precio,
+        cantidad = @cantidad,
+        imagen = @imagen
+    WHERE id = @id AND almacen_id = @almacen_id
+END
+GO
+
+-- 10. Eliminar producto
+CREATE OR ALTER PROCEDURE eliminar_producto
+    @id INT,
+    @almacen_id INT
+AS
+BEGIN
+    DELETE FROM productos WHERE id = @id AND almacen_id = @almacen_id
+END
+GO

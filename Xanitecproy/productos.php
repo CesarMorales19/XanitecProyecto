@@ -1,3 +1,16 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>productos.php</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen font-sans">
+  <div class="container mx-auto px-4 py-10">
+    <div class="bg-white shadow-xl rounded-xl p-8">
+<pre class='whitespace-pre-wrap text-sm text-gray-800'>
 <?php
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
@@ -10,6 +23,20 @@ if (!isset($_SESSION['user_id'])) {
 
 require_once 'db.php';
 
+// Función para registrar movimiento (puedes mantenerla igual)
+function registrarMovimiento($pdo, $usuario, $accion, $modulo, $descripcion) {
+    $sql = "INSERT INTO movimientos (usuario, accion, modulo, descripcion) VALUES (:usuario, :accion, :modulo, :descripcion)";
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([
+        'usuario' => $usuario,
+        'accion' => $accion,
+        'modulo' => $modulo,
+        'descripcion' => $descripcion
+    ]);
+}
+
+$usuario = $_SESSION['user_id'];
+
 $almacen_id = isset($_GET['almacen_id']) ? (int)$_GET['almacen_id'] : 0;
 if ($almacen_id <= 0) {
     die("ID de almacén no válido.");
@@ -21,9 +48,10 @@ if (!is_dir($uploadDir)) {
     mkdir($uploadDir, 0755, true);
 }
 
-// Obtener info del almacén
-$stmt = $pdo->prepare("SELECT * FROM almacenes WHERE id = :id");
-$stmt->execute(['id' => $almacen_id]);
+// Obtener info del almacén usando procedimiento almacenado
+$stmt = $pdo->prepare("EXEC obtener_almacen_por_id :id");
+$stmt->bindParam(':id', $almacen_id, PDO::PARAM_INT);
+$stmt->execute();
 $almacen = $stmt->fetch(PDO::FETCH_ASSOC);
 if (!$almacen) {
     die("Almacén no encontrado.");
@@ -40,11 +68,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $precio = $_POST['precio'] ?? 0;
     $cantidad = $_POST['cantidad'] ?? 0;
     $post_accion = $_POST['accion'] ?? '';
-
-    // Imagen previa si estamos editando
     $imagen_nombre = $_POST['imagen_actual'] ?? '';
 
-    // Manejar subida de imagen
     if (isset($_FILES['imagen']) && $_FILES['imagen']['error'] === UPLOAD_ERR_OK) {
         $fileTmpPath = $_FILES['imagen']['tmp_name'];
         $fileName = $_FILES['imagen']['name'];
@@ -52,16 +77,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $fileType = $_FILES['imagen']['type'];
         $fileNameCmps = explode(".", $fileName);
         $fileExtension = strtolower(end($fileNameCmps));
-
-        // Extensiones permitidas
         $allowedfileExtensions = ['jpg', 'jpeg', 'png', 'gif'];
+
         if (in_array($fileExtension, $allowedfileExtensions)) {
-            // Crear nombre único
             $newFileName = md5(time() . $fileName) . '.' . $fileExtension;
             $dest_path = $uploadDir . $newFileName;
 
             if (move_uploaded_file($fileTmpPath, $dest_path)) {
-                // Eliminar imagen anterior si existe y es diferente
                 if ($imagen_nombre && file_exists($uploadDir . $imagen_nombre) && $imagen_nombre !== $newFileName) {
                     unlink($uploadDir . $imagen_nombre);
                 }
@@ -76,66 +98,76 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (!$mensaje) {
         if ($post_accion === 'agregar') {
-            $sql = "INSERT INTO productos (nombre, descripcion, precio, cantidad, almacen_id, imagen) VALUES (:nombre, :descripcion, :precio, :cantidad, :almacen_id, :imagen)";
-            $stmt = $pdo->prepare($sql);
-            if ($stmt->execute([
-                'nombre' => $nombre,
-                'descripcion' => $descripcion,
-                'precio' => $precio,
-                'cantidad' => $cantidad,
-                'almacen_id' => $almacen_id,
-                'imagen' => $imagen_nombre
-            ])) {
-                header("Location: productos.php?almacen_id=$almacen_id&msg=agregado");
-                exit;
-            } else {
-                $mensaje = "Error al agregar producto.";
-            }
+            // Usar procedimiento almacenado agregar_producto
+            $stmt = $pdo->prepare("EXEC agregar_producto :nombre, :descripcion, :precio, :cantidad, :almacen_id, :imagen");
+            $stmt->execute([
+                ':nombre' => $nombre,
+                ':descripcion' => $descripcion,
+                ':precio' => $precio,
+                ':cantidad' => $cantidad,
+                ':almacen_id' => $almacen_id,
+                ':imagen' => $imagen_nombre
+            ]);
+
+            $desc = "Se agregó el producto '$nombre' al almacén '{$almacen['nombre']}' (ID $almacen_id)";
+            registrarMovimiento($pdo, $usuario, 'crear', 'productos', $desc);
+
+            header("Location: productos.php?almacen_id=$almacen_id&msg=agregado");
+            exit;
         } elseif ($post_accion === 'editar' && $id > 0) {
-            $sql = "UPDATE productos SET nombre=:nombre, descripcion=:descripcion, precio=:precio, cantidad=:cantidad, imagen=:imagen WHERE id=:id AND almacen_id=:almacen_id";
-            $stmt = $pdo->prepare($sql);
-            if ($stmt->execute([
-                'nombre' => $nombre,
-                'descripcion' => $descripcion,
-                'precio' => $precio,
-                'cantidad' => $cantidad,
-                'imagen' => $imagen_nombre,
-                'id' => $id,
-                'almacen_id' => $almacen_id
-            ])) {
-                header("Location: productos.php?almacen_id=$almacen_id&msg=actualizado");
-                exit;
-            } else {
-                $mensaje = "Error al actualizar producto.";
-            }
+            // Usar procedimiento almacenado editar_producto
+            $stmt = $pdo->prepare("EXEC editar_producto :id, :nombre, :descripcion, :precio, :cantidad, :almacen_id, :imagen");
+            $stmt->execute([
+                ':id' => $id,
+                ':nombre' => $nombre,
+                ':descripcion' => $descripcion,
+                ':precio' => $precio,
+                ':cantidad' => $cantidad,
+                ':almacen_id' => $almacen_id,
+                ':imagen' => $imagen_nombre
+            ]);
+
+            $desc = "Se editó el producto ID $id en el almacén '{$almacen['nombre']}' (ID $almacen_id): nuevo nombre '$nombre', precio $precio, cantidad $cantidad";
+            registrarMovimiento($pdo, $usuario, 'editar', 'productos', $desc);
+
+            header("Location: productos.php?almacen_id=$almacen_id&msg=actualizado");
+            exit;
         }
     }
 }
 
 // GET: eliminar producto
 if ($accion === 'eliminar' && $id > 0) {
-    // Antes eliminar imagen si existe
-    $stmt = $pdo->prepare("SELECT imagen FROM productos WHERE id=:id AND almacen_id=:almacen_id");
-    $stmt->execute(['id' => $id, 'almacen_id' => $almacen_id]);
-    $prodImagen = $stmt->fetchColumn();
+    // Obtener producto antes de eliminar (con procedimiento)
+    $stmt = $pdo->prepare("EXEC obtener_producto_por_id :id, :almacen_id");
+    $stmt->execute([':id' => $id, ':almacen_id' => $almacen_id]);
+    $producto = $stmt->fetch(PDO::FETCH_ASSOC);
+    $prodImagen = $producto['imagen'] ?? null;
+    $nombreProducto = $producto['nombre'] ?? 'Desconocido';
+
     if ($prodImagen && file_exists($uploadDir . $prodImagen)) {
         unlink($uploadDir . $prodImagen);
     }
 
-    $stmt = $pdo->prepare("DELETE FROM productos WHERE id=:id AND almacen_id=:almacen_id");
-    $stmt->execute(['id' => $id, 'almacen_id' => $almacen_id]);
+    $desc = "Se eliminó el producto '$nombreProducto' (ID $id) del almacén '{$almacen['nombre']}' (ID $almacen_id)";
+    registrarMovimiento($pdo, $usuario, 'eliminar', 'productos', $desc);
+
+    // Eliminar producto con procedimiento
+    $stmt = $pdo->prepare("EXEC eliminar_producto :id, :almacen_id");
+    $stmt->execute([':id' => $id, ':almacen_id' => $almacen_id]);
+
     header("Location: productos.php?almacen_id=$almacen_id&msg=eliminado");
     exit;
 }
 
-// Mensajes de confirmación
+
+// Mensajes
 $msg = $_GET['msg'] ?? '';
 $msgTexto = '';
 if ($msg === 'agregado') $msgTexto = "Producto agregado exitosamente.";
 if ($msg === 'actualizado') $msgTexto = "Producto actualizado exitosamente.";
 if ($msg === 'eliminado') $msgTexto = "Producto eliminado exitosamente.";
 
-// Para editar/ver producto
 $data = ['nombre' => '', 'descripcion' => '', 'precio' => '', 'cantidad' => '', 'imagen' => ''];
 if (($accion === 'editar' || $accion === 'ver') && $id > 0) {
     $stmt = $pdo->prepare("SELECT * FROM productos WHERE id = :id AND almacen_id = :almacen_id");
@@ -147,13 +179,13 @@ if (($accion === 'editar' || $accion === 'ver') && $id > 0) {
     }
 }
 
-// Obtener productos para listar (cuando no se está agregando o editando)
 if ($accion === 'listar') {
     $stmt = $pdo->prepare("SELECT * FROM productos WHERE almacen_id = :almacen_id ORDER BY id DESC");
     $stmt->execute(['almacen_id' => $almacen_id]);
     $productos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 ?>
+
 
 <!DOCTYPE html>
 <html lang="es">
@@ -289,5 +321,11 @@ if ($accion === 'listar') {
     });
 </script>
 
+</body>
+</html>
+
+</pre>
+    </div>
+  </div>
 </body>
 </html>
