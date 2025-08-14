@@ -56,11 +56,16 @@ try {
 
   <div class="max-w-7xl mx-auto bg-gray-900 bg-opacity-90 rounded-2xl shadow-2xl p-10">
 
-    <div class="flex flex-col md:flex-row items-center justify-between mb-8">
+    <div class="flex flex-col md:flex-row items-center justify-between mb-8 gap-4">
       <h1 class="text-4xl font-bold text-blue-400">Inventario de Productos</h1>
-      <a href="success.php" class="mt-4 md:mt-0 bg-blue-700 hover:bg-blue-800 text-white px-6 py-2 rounded-lg font-semibold shadow">
-        ⬅️ Volver al inicio
-      </a>
+      <div class="flex gap-4">
+        <a href="productos.php" class="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-semibold shadow">
+          ➕ Agregar inventario
+        </a>
+        <a href="success.php" class="bg-blue-700 hover:bg-blue-800 text-white px-6 py-2 rounded-lg font-semibold shadow">
+          ⬅️ Volver al inicio
+        </a>
+      </div>
     </div>
 
     <form method="GET" action="inventario.php" class="mb-8">

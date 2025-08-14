@@ -1,3 +1,54 @@
+<?php
+session_start();
+require 'db.php';
+
+$loginMensaje = "";
+$registerMensaje = "";
+$showRegister = false;
+
+if ($_SERVER["REQUEST_METHOD"] == "POST") {
+  if (isset($_POST['action']) && $_POST['action'] === 'login') {
+    $email = $_POST['email'];
+    $password = $_POST['password'];
+
+    $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ?");
+    $stmt->execute([$email]);
+    $user = $stmt->fetch();
+
+    if ($user && password_verify($password, $user['password'])) {
+      $_SESSION['user_id'] = $user['id'];
+      header("Location: success.php");
+      exit;
+    } else {
+      $loginMensaje = "❌ Correo o contraseña incorrectos.";
+    }
+  }
+
+  if (isset($_POST['action']) && $_POST['action'] === 'register') {
+    $email = $_POST['email'];
+    $password = $_POST['password'];
+    $confirm = $_POST['confirm_password'];
+
+    if ($password !== $confirm) {
+      $registerMensaje = "❌ Las contraseñas no coinciden.";
+      $showRegister = true;
+    } else {
+      $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ?");
+      $stmt->execute([$email]);
+      if ($stmt->fetch()) {
+        $registerMensaje = "⚠️ Ya existe un usuario con ese correo.";
+        $showRegister = true;
+      } else {
+        $hash = password_hash($password, PASSWORD_DEFAULT);
+        $stmt = $pdo->prepare("INSERT INTO users (email, password) VALUES (?, ?)");
+        $stmt->execute([$email, $hash]);
+        $loginMensaje = "✅ Registro exitoso. Ahora puedes iniciar sesión.";
+        $showRegister = false;
+      }
+    }
+  }
+}
+?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -8,32 +59,32 @@
   <script src="https://cdn.jsdelivr.net/npm/particles.js"></script>
   <style>
     body {
-      background-color: #0f172a; /* gray-900 */
+      background-color: #0f172a;
       color: white;
     }
     .bg-panel {
-      background-color: #1e293b; /* gray-800 */
+      background-color: #1e293b;
     }
     .text-primary {
-      color: #3b82f6; /* blue-500 */
+      color: #3b82f6;
     }
   </style>
 </head>
 <body class="h-screen overflow-hidden relative">
 
-  <!-- Partículas de fondo -->
+  <!-- Partículas -->
   <div id="particles-js" class="absolute inset-0 -z-10"></div>
 
-  <!-- Contenido principal -->
+  <!-- Contenido -->
   <div class="flex h-full items-center justify-center">
     <div class="bg-panel rounded-xl shadow-2xl w-full max-w-5xl flex flex-col md:flex-row overflow-hidden border border-gray-700">
 
-      <!-- Ilustración lateral -->
+      <!-- Imagen -->
       <div class="w-full md:w-1/2 bg-gray-900 p-10 hidden md:flex items-center justify-center">
         <img src="imagenes/undraw_logistics_xpdj.svg" alt="Logística" class="w-80" />
       </div>
 
-      <!-- Formulario de autenticación -->
+      <!-- Formulario -->
       <div class="w-full md:w-1/2 p-8 md:p-10">
         <h2 class="text-2xl font-bold text-center text-primary mb-6">Bienvenido a Xanitec Almacenes</h2>
         <div class="flex justify-center mb-6">
@@ -42,8 +93,14 @@
         </div>
 
         <!-- Formulario de login -->
+        <?php if (!empty($loginMensaje)) : ?>
+          <div class="mb-4 text-sm <?= strpos($loginMensaje, '✅') !== false ? 'text-green-600 bg-green-100' : 'text-red-600 bg-red-100' ?> p-3 rounded">
+            <?= $loginMensaje ?>
+          </div>
+        <?php endif; ?>
         <div id="loginForm">
-          <form action="login.php" method="POST" class="space-y-4">
+          <form action="index.php" method="POST" class="space-y-4">
+            <input type="hidden" name="action" value="login">
             <div>
               <label class="block font-medium text-white">Correo electrónico</label>
               <input type="email" name="email" required class="w-full px-4 py-2 border border-gray-600 rounded-md bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -60,8 +117,14 @@
         </div>
 
         <!-- Formulario de registro -->
+        <?php if (!empty($registerMensaje)) : ?>
+          <div class="mb-4 text-sm <?= strpos($registerMensaje, '✅') !== false ? 'text-green-600 bg-green-100' : 'text-yellow-600 bg-yellow-100' ?> p-3 rounded">
+            <?= $registerMensaje ?>
+          </div>
+        <?php endif; ?>
         <div id="registerForm" class="hidden">
-          <form action="register.php" method="POST" class="space-y-4">
+          <form action="index.php" method="POST" class="space-y-4">
+            <input type="hidden" name="action" value="register">
             <div>
               <label class="block font-medium text-white">Correo electrónico</label>
               <input type="email" name="email" required class="w-full px-4 py-2 border border-gray-600 rounded-md bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -83,7 +146,6 @@
 
   <!-- Scripts -->
   <script>
-    // Partículas
     particlesJS("particles-js", {
       particles: {
         number: { value: 60, density: { enable: true, value_area: 800 } },
@@ -96,19 +158,12 @@
       },
       interactivity: {
         detect_on: "canvas",
-        events: {
-          onhover: { enable: true, mode: "repulse" },
-          onclick: { enable: true, mode: "push" }
-        },
-        modes: {
-          repulse: { distance: 80 },
-          push: { particles_nb: 4 }
-        }
+        events: { onhover: { enable: true, mode: "repulse" }, onclick: { enable: true, mode: "push" } },
+        modes: { repulse: { distance: 80 }, push: { particles_nb: 4 } }
       },
       retina_detect: true
     });
 
-    // Tabs lógica
     const loginTab = document.getElementById("loginTab");
     const registerTab = document.getElementById("registerTab");
     const loginForm = document.getElementById("loginForm");
@@ -132,5 +187,14 @@
       loginTab.classList.add("bg-white", "text-blue-600");
     });
   </script>
+
+  <?php if ($showRegister): ?>
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      document.getElementById("registerTab").click();
+    });
+  </script>
+  <?php endif; ?>
+
 </body>
 </html>

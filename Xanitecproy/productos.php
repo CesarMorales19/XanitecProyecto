@@ -1,331 +1,227 @@
-
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>productos.php</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-gray-100 min-h-screen font-sans">
-  <div class="container mx-auto px-4 py-10">
-    <div class="bg-white shadow-xl rounded-xl p-8">
-<pre class='whitespace-pre-wrap text-sm text-gray-800'>
 <?php
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
 session_start();
-
 if (!isset($_SESSION['user_id'])) {
     header("Location: index.php");
     exit;
 }
+require "db.php";
 
-require_once 'db.php';
+// Obtener lista de almacenes
+$stmt = $pdo->query("EXEC listar_almacenes");
+$almacenes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Función para registrar movimiento (puedes mantenerla igual)
-function registrarMovimiento($pdo, $usuario, $accion, $modulo, $descripcion) {
-    $sql = "INSERT INTO movimientos (usuario, accion, modulo, descripcion) VALUES (:usuario, :accion, :modulo, :descripcion)";
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute([
-        'usuario' => $usuario,
-        'accion' => $accion,
-        'modulo' => $modulo,
-        'descripcion' => $descripcion
-    ]);
+// Procesar formulario para agregar producto
+if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['accion']) && $_POST['accion'] === "agregar_producto") {
+    $nombre = $_POST["nombre"] ?? '';
+    $descripcion = $_POST["descripcion"] ?? '';
+    $precio = $_POST["precio"] ?? 0;
+    $imagen = $_POST["imagen"] ?? '';
+    $almacen_id = $_POST["almacen_id_producto"] ?? null;
+
+    if (!empty($nombre) && !empty($precio) && !empty($almacen_id)) {
+        $stmt = $pdo->prepare("INSERT INTO productos (nombre, descripcion, precio, imagen, almacen_id) VALUES (:nombre, :descripcion, :precio, :imagen, :almacen_id)");
+        $stmt->bindParam(":nombre", $nombre);
+        $stmt->bindParam(":descripcion", $descripcion);
+        $stmt->bindParam(":precio", $precio);
+        $stmt->bindParam(":imagen", $imagen);
+        $stmt->bindParam(":almacen_id", $almacen_id, PDO::PARAM_INT);
+        $stmt->execute();
+    }
 }
 
-$usuario = $_SESSION['user_id'];
+// Procesar formulario para modificar inventario (sumar/restar)
+if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['accion']) && $_POST['accion'] === "modificar_inventario") {
+    $almacen_id = $_POST["almacen_id"] ?? null;
+    $producto_id = $_POST["producto_id"] ?? null;
+    $cantidad = (int)($_POST["cantidad"] ?? 0);
+    $operacion = $_POST["operacion"] ?? "sumar";
 
-$almacen_id = isset($_GET['almacen_id']) ? (int)$_GET['almacen_id'] : 0;
-if ($almacen_id <= 0) {
-    die("ID de almacén no válido.");
-}
+    if (!empty($almacen_id) && !empty($producto_id) && $cantidad > 0) {
+        // Verificar cantidad actual
+        $stmt = $pdo->prepare("SELECT cantidad FROM inventario WHERE producto = :producto AND almacen_id = :almacen_id");
+        $stmt->execute([":producto" => $producto_id, ":almacen_id" => $almacen_id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
-// Crear carpeta uploads si no existe
-$uploadDir = __DIR__ . '/uploads/';
-if (!is_dir($uploadDir)) {
-    mkdir($uploadDir, 0755, true);
-}
-
-// Obtener info del almacén usando procedimiento almacenado
-$stmt = $pdo->prepare("EXEC obtener_almacen_por_id :id");
-$stmt->bindParam(':id', $almacen_id, PDO::PARAM_INT);
-$stmt->execute();
-$almacen = $stmt->fetch(PDO::FETCH_ASSOC);
-if (!$almacen) {
-    die("Almacén no encontrado.");
-}
-
-$accion = $_GET['accion'] ?? 'listar';
-$id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
-$mensaje = '';
-
-// Manejo POST para agregar o editar producto con imagen
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $nombre = $_POST['nombre'] ?? '';
-    $descripcion = $_POST['descripcion'] ?? '';
-    $precio = $_POST['precio'] ?? 0;
-    $cantidad = $_POST['cantidad'] ?? 0;
-    $post_accion = $_POST['accion'] ?? '';
-    $imagen_nombre = $_POST['imagen_actual'] ?? '';
-
-    if (isset($_FILES['imagen']) && $_FILES['imagen']['error'] === UPLOAD_ERR_OK) {
-        $fileTmpPath = $_FILES['imagen']['tmp_name'];
-        $fileName = $_FILES['imagen']['name'];
-        $fileSize = $_FILES['imagen']['size'];
-        $fileType = $_FILES['imagen']['type'];
-        $fileNameCmps = explode(".", $fileName);
-        $fileExtension = strtolower(end($fileNameCmps));
-        $allowedfileExtensions = ['jpg', 'jpeg', 'png', 'gif'];
-
-        if (in_array($fileExtension, $allowedfileExtensions)) {
-            $newFileName = md5(time() . $fileName) . '.' . $fileExtension;
-            $dest_path = $uploadDir . $newFileName;
-
-            if (move_uploaded_file($fileTmpPath, $dest_path)) {
-                if ($imagen_nombre && file_exists($uploadDir . $imagen_nombre) && $imagen_nombre !== $newFileName) {
-                    unlink($uploadDir . $imagen_nombre);
-                }
-                $imagen_nombre = $newFileName;
+        if ($row) {
+            $cantidad_actual = (int)$row['cantidad'];
+            if ($operacion === "sumar") {
+                $nueva_cantidad = $cantidad_actual + $cantidad;
             } else {
-                $mensaje = 'Error al mover la imagen subida.';
+                $nueva_cantidad = max(0, $cantidad_actual - $cantidad);
             }
+            $stmt = $pdo->prepare("UPDATE inventario SET cantidad = :cantidad WHERE producto = :producto AND almacen_id = :almacen_id");
+            $stmt->execute([":cantidad" => $nueva_cantidad, ":producto" => $producto_id, ":almacen_id" => $almacen_id]);
         } else {
-            $mensaje = 'Solo se permiten archivos JPG, JPEG, PNG y GIF.';
+            if ($operacion === "sumar") {
+                $stmt = $pdo->prepare("INSERT INTO inventario (producto, cantidad, almacen_id) VALUES (:producto, :cantidad, :almacen_id)");
+                $stmt->execute([":producto" => $producto_id, ":cantidad" => $cantidad, ":almacen_id" => $almacen_id]);
+            }
         }
-    }
-
-    if (!$mensaje) {
-        if ($post_accion === 'agregar') {
-            // Usar procedimiento almacenado agregar_producto
-            $stmt = $pdo->prepare("EXEC agregar_producto :nombre, :descripcion, :precio, :cantidad, :almacen_id, :imagen");
-            $stmt->execute([
-                ':nombre' => $nombre,
-                ':descripcion' => $descripcion,
-                ':precio' => $precio,
-                ':cantidad' => $cantidad,
-                ':almacen_id' => $almacen_id,
-                ':imagen' => $imagen_nombre
-            ]);
-
-            $desc = "Se agregó el producto '$nombre' al almacén '{$almacen['nombre']}' (ID $almacen_id)";
-            registrarMovimiento($pdo, $usuario, 'crear', 'productos', $desc);
-
-            header("Location: productos.php?almacen_id=$almacen_id&msg=agregado");
-            exit;
-        } elseif ($post_accion === 'editar' && $id > 0) {
-            // Usar procedimiento almacenado editar_producto
-            $stmt = $pdo->prepare("EXEC editar_producto :id, :nombre, :descripcion, :precio, :cantidad, :almacen_id, :imagen");
-            $stmt->execute([
-                ':id' => $id,
-                ':nombre' => $nombre,
-                ':descripcion' => $descripcion,
-                ':precio' => $precio,
-                ':cantidad' => $cantidad,
-                ':almacen_id' => $almacen_id,
-                ':imagen' => $imagen_nombre
-            ]);
-
-            $desc = "Se editó el producto ID $id en el almacén '{$almacen['nombre']}' (ID $almacen_id): nuevo nombre '$nombre', precio $precio, cantidad $cantidad";
-            registrarMovimiento($pdo, $usuario, 'editar', 'productos', $desc);
-
-            header("Location: productos.php?almacen_id=$almacen_id&msg=actualizado");
-            exit;
-        }
+        header("Location: productos.php");
+        exit;
     }
 }
 
-// GET: eliminar producto
-if ($accion === 'eliminar' && $id > 0) {
-    // Obtener producto antes de eliminar (con procedimiento)
-    $stmt = $pdo->prepare("EXEC obtener_producto_por_id :id, :almacen_id");
-    $stmt->execute([':id' => $id, ':almacen_id' => $almacen_id]);
-    $producto = $stmt->fetch(PDO::FETCH_ASSOC);
-    $prodImagen = $producto['imagen'] ?? null;
-    $nombreProducto = $producto['nombre'] ?? 'Desconocido';
-
-    if ($prodImagen && file_exists($uploadDir . $prodImagen)) {
-        unlink($uploadDir . $prodImagen);
-    }
-
-    $desc = "Se eliminó el producto '$nombreProducto' (ID $id) del almacén '{$almacen['nombre']}' (ID $almacen_id)";
-    registrarMovimiento($pdo, $usuario, 'eliminar', 'productos', $desc);
-
-    // Eliminar producto con procedimiento
-    $stmt = $pdo->prepare("EXEC eliminar_producto :id, :almacen_id");
-    $stmt->execute([':id' => $id, ':almacen_id' => $almacen_id]);
-
-    header("Location: productos.php?almacen_id=$almacen_id&msg=eliminado");
+// Eliminar producto
+if (isset($_GET['eliminar']) && is_numeric($_GET['eliminar'])) {
+    $id = (int)$_GET['eliminar'];
+    $stmt = $pdo->prepare("DELETE FROM productos WHERE id = :id");
+    $stmt->execute([":id" => $id]);
+    header("Location: productos.php");
     exit;
 }
 
-
-// Mensajes
-$msg = $_GET['msg'] ?? '';
-$msgTexto = '';
-if ($msg === 'agregado') $msgTexto = "Producto agregado exitosamente.";
-if ($msg === 'actualizado') $msgTexto = "Producto actualizado exitosamente.";
-if ($msg === 'eliminado') $msgTexto = "Producto eliminado exitosamente.";
-
-$data = ['nombre' => '', 'descripcion' => '', 'precio' => '', 'cantidad' => '', 'imagen' => ''];
-if (($accion === 'editar' || $accion === 'ver') && $id > 0) {
-    $stmt = $pdo->prepare("SELECT * FROM productos WHERE id = :id AND almacen_id = :almacen_id");
-    $stmt->execute(['id' => $id, 'almacen_id' => $almacen_id]);
-    $data = $stmt->fetch(PDO::FETCH_ASSOC);
-    if (!$data) {
-        $mensaje = "Producto no encontrado.";
-        $accion = 'listar';
-    }
-}
-
-if ($accion === 'listar') {
-    $stmt = $pdo->prepare("SELECT * FROM productos WHERE almacen_id = :almacen_id ORDER BY id DESC");
-    $stmt->execute(['almacen_id' => $almacen_id]);
-    $productos = $stmt->fetchAll(PDO::FETCH_ASSOC);
-}
+// Obtener lista de productos
+$stmt = $pdo->query("SELECT id, nombre FROM productos");
+$productos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
-
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="UTF-8" />
-<title>Productos del Almacén <?= htmlspecialchars($almacen['nombre']) ?></title>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
-<style>
-    #previewImagen {
-        max-width: 150px;
-        max-height: 150px;
-        margin-top: 10px;
+  <meta charset="UTF-8" />
+  <title>Productos</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #121212;
+      color: #E0E0E0;
     }
-</style>
+    #particles-js {
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      background: linear-gradient(135deg, #1F2937, #111827);
+    }
+  </style>
 </head>
-<body>
-<div class="container mt-4">
-    <h1>Productos en almacén: <?= htmlspecialchars($almacen['nombre']) ?></h1>
-    <a href="almacenes.php" class="btn btn-secondary mb-3">⬅️ Volver a Almacenes</a>
+<body class="min-h-screen px-6 py-10">
 
-    <?php if ($mensaje): ?>
-        <div class="alert alert-danger"><?= htmlspecialchars($mensaje) ?></div>
-    <?php elseif ($msgTexto): ?>
-        <div class="alert alert-success"><?= htmlspecialchars($msgTexto) ?></div>
-    <?php endif; ?>
+<div id="particles-js"></div>
 
-    <?php if ($accion === 'listar'): ?>
-        <a href="productos.php?almacen_id=<?= $almacen_id ?>&accion=agregar" class="btn btn-primary mb-3">➕ Agregar Producto</a>
+<div class="max-w-7xl mx-auto bg-gray-900 bg-opacity-90 rounded-2xl shadow-2xl p-10">
+    
+    <h1 class="text-3xl font-bold text-blue-400 mb-6">Gestión de Productos</h1>
 
-        <?php if ($productos): ?>
-        <table class="table table-bordered">
-            <thead class="table-light">
+
+<a href="inventario.php" class="inline-block bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded mb-6">⬅ Volver al Inventario</a>
+
+
+    <!-- Formulario para agregar producto -->
+    <form method="POST" class="space-y-4 mb-10">
+        <input type="hidden" name="accion" value="agregar_producto">
+        <div>
+            <label class="block mb-1">Nombre:</label>
+            <input type="text" name="nombre" class="w-full bg-gray-700 border border-gray-600 p-2 rounded" required>
+        </div>
+        <div>
+            <label class="block mb-1">Descripción:</label>
+            <textarea name="descripcion" class="w-full bg-gray-700 border border-gray-600 p-2 rounded"></textarea>
+        </div>
+        <div>
+            <label class="block mb-1">Precio:</label>
+            <input type="number" step="0.01" name="precio" class="w-full bg-gray-700 border border-gray-600 p-2 rounded" required>
+        </div>
+        <div>
+            <label class="block mb-1">Imagen (nombre archivo):</label>
+            <input type="text" name="imagen" class="w-full bg-gray-700 border border-gray-600 p-2 rounded">
+        </div>
+        <div>
+            <label class="block mb-1">Almacén:</label>
+            <select name="almacen_id_producto" class="w-full bg-gray-700 border border-gray-600 p-2 rounded" required>
+                <?php foreach ($almacenes as $a): ?>
+                    <option value="<?= $a['id'] ?>"><?= htmlspecialchars($a['nombre']) ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <button type="submit" class="bg-green-600 hover:bg-green-700 px-6 py-2 rounded">➕ Guardar Producto</button>
+    </form>
+
+    <!-- Formulario para modificar inventario -->
+    <form method="POST" class="space-y-4 mb-10">
+        <input type="hidden" name="accion" value="modificar_inventario">
+        <div>
+            <label class="block mb-1">Almacén:</label>
+            <select name="almacen_id" class="w-full bg-gray-700 border border-gray-600 p-2 rounded" required>
+                <?php foreach ($almacenes as $a): ?>
+                    <option value="<?= $a['id'] ?>"><?= htmlspecialchars($a['nombre']) ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div>
+            <label class="block mb-1">Producto:</label>
+            <select name="producto_id" class="w-full bg-gray-700 border border-gray-600 p-2 rounded" required>
+                <?php foreach ($productos as $p): ?>
+                    <option value="<?= $p['id'] ?>"><?= htmlspecialchars($p['nombre']) ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div>
+            <label class="block mb-1">Cantidad:</label>
+            <input type="number" name="cantidad" min="1" class="w-full bg-gray-700 border border-gray-600 p-2 rounded" required>
+        </div>
+        <div>
+            <label class="block mb-1">Operación:</label>
+            <select name="operacion" class="w-full bg-gray-700 border border-gray-600 p-2 rounded">
+                <option value="sumar">➕ Sumar</option>
+                <option value="restar">➖ Restar</option>
+            </select>
+        </div>
+        <button type="submit" class="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded">📦 Actualizar Inventario</button>
+    </form>
+
+    <!-- Lista de productos con opción de eliminar -->
+    <h2 class="text-xl font-semibold text-yellow-300 mb-4">Lista de Productos</h2>
+    <div class="overflow-x-auto">
+        <table class="min-w-full text-left text-sm bg-gray-800 text-white rounded-lg overflow-hidden">
+            <thead class="bg-gray-700 text-blue-300 text-sm uppercase tracking-wider">
                 <tr>
-                    <th>ID</th>
-                    <th>Nombre</th>
-                    <th>Descripción</th>
-                    <th>Precio</th>
-                    <th>Cantidad</th>
-                    <th>Imagen</th>
-                    <th>Acciones</th>
+                    <th class="px-6 py-3">Nombre</th>
+                    <th class="px-6 py-3">Acciones</th>
                 </tr>
             </thead>
             <tbody>
-                <?php foreach ($productos as $prod): ?>
-                <tr>
-                    <td><?= $prod['id'] ?></td>
-                    <td><?= htmlspecialchars($prod['nombre']) ?></td>
-                    <td><?= htmlspecialchars($prod['descripcion']) ?></td>
-                    <td><?= number_format($prod['precio'], 2) ?></td>
-                    <td><?= (int)$prod['cantidad'] ?></td>
-                    <td>
-                        <?php if ($prod['imagen'] && file_exists($uploadDir . $prod['imagen'])): ?>
-                            <img src="uploads/<?= htmlspecialchars($prod['imagen']) ?>" alt="Imagen" style="max-width: 80px; max-height: 80px;">
-                        <?php else: ?>
-                            Sin imagen
-                        <?php endif; ?>
-                    </td>
-                    <td>
-                        <a href="productos.php?almacen_id=<?= $almacen_id ?>&accion=editar&id=<?= $prod['id'] ?>" class="btn btn-warning btn-sm">✏️ Editar</a>
-                        <a href="productos.php?almacen_id=<?= $almacen_id ?>&accion=eliminar&id=<?= $prod['id'] ?>" class="btn btn-danger btn-sm" onclick="return confirm('¿Eliminar producto?')">🗑️ Eliminar</a>
+                <?php foreach ($productos as $p): ?>
+                <tr class="border-t border-gray-700 hover:bg-gray-700">
+                    <td class="px-6 py-4"><?= htmlspecialchars($p['nombre']) ?></td>
+                    <td class="px-6 py-4">
+                        <a href="?eliminar=<?= $p['id'] ?>" class="bg-red-600 hover:bg-red-700 px-4 py-1 rounded text-white" onclick="return confirm('¿Eliminar este producto?')">🗑 Eliminar</a>
                     </td>
                 </tr>
                 <?php endforeach; ?>
             </tbody>
         </table>
-        <?php else: ?>
-            <p>No hay productos registrados en este almacén.</p>
-        <?php endif; ?>
-
-    <?php elseif ($accion === 'agregar' || $accion === 'editar'): ?>
-
-        <h2><?= $accion === 'agregar' ? '➕ Agregar Producto' : '✏️ Editar Producto' ?></h2>
-
-        <form method="POST" enctype="multipart/form-data" class="mt-3" novalidate>
-            <input type="hidden" name="accion" value="<?= $accion ?>">
-            <?php if ($accion === 'editar'): ?>
-                <input type="hidden" name="imagen_actual" value="<?= htmlspecialchars($data['imagen']) ?>">
-            <?php endif; ?>
-
-            <div class="mb-3">
-                <label>Nombre <span class="text-danger">*</span></label>
-                <input type="text" name="nombre" class="form-control" required value="<?= htmlspecialchars($data['nombre'] ?? '') ?>">
-            </div>
-            <div class="mb-3">
-                <label>Descripción</label>
-                <textarea name="descripcion" class="form-control"><?= htmlspecialchars($data['descripcion'] ?? '') ?></textarea>
-            </div>
-            <div class="mb-3">
-                <label>Precio</label>
-                <input type="number" step="0.01" min="0" name="precio" class="form-control" value="<?= htmlspecialchars($data['precio'] ?? '') ?>">
-            </div>
-            <div class="mb-3">
-                <label>Cantidad</label>
-                <input type="number" min="0" name="cantidad" class="form-control" value="<?= htmlspecialchars($data['cantidad'] ?? '') ?>">
-            </div>
-
-            <div class="mb-3">
-                <label>Imagen</label>
-                <input type="file" name="imagen" accept="image/*" class="form-control" id="inputImagen">
-                <?php if ($accion === 'editar' && $data['imagen'] && file_exists($uploadDir . $data['imagen'])): ?>
-                    <img src="uploads/<?= htmlspecialchars($data['imagen']) ?>" id="previewImagen" alt="Imagen actual">
-                <?php else: ?>
-                    <img id="previewImagen" style="display:none;" alt="Vista previa">
-                <?php endif; ?>
-            </div>
-
-            <button type="submit" class="btn btn-primary"><?= $accion === 'agregar' ? 'Guardar' : 'Actualizar' ?></button>
-            <a href="productos.php?almacen_id=<?= $almacen_id ?>" class="btn btn-danger ms-2">Cancelar</a>
-        </form>
-
-    <?php endif; ?>
-
+    </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/particles.js"></script>
 <script>
-    // Vista previa de imagen antes de enviar
-    document.getElementById('inputImagen').addEventListener('change', function(event) {
-        const preview = document.getElementById('previewImagen');
-        const file = event.target.files[0];
-
-        if (file) {
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                preview.src = e.target.result;
-                preview.style.display = 'block';
-            }
-            reader.readAsDataURL(file);
-        } else {
-            preview.src = '';
-            preview.style.display = 'none';
+particlesJS("particles-js", {
+    particles: {
+        number: { value: 70, density: { enable: true, value_area: 900 } },
+        color: { value: "#60A5FA" },
+        shape: { type: "circle" },
+        opacity: { value: 0.3, random: true },
+        size: { value: 3, random: true },
+        line_linked: { enable: true, distance: 120, color: "#3B82F6", opacity: 0.4, width: 1 },
+        move: { enable: true, speed: 1.2, direction: "none", out_mode: "out" }
+    },
+    interactivity: {
+        detect_on: "canvas",
+        events: {
+            onhover: { enable: true, mode: "repulse" },
+            onclick: { enable: true, mode: "push" }
+        },
+        modes: {
+            repulse: { distance: 100 },
+            push: { particles_nb: 4 }
         }
-    });
+    },
+    retina_detect: true
+});
 </script>
 
-</body>
-</html>
-
-</pre>
-    </div>
-  </div>
 </body>
 </html>

@@ -1,16 +1,3 @@
-
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>reset-password.php</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-gray-100 min-h-screen font-sans">
-  <div class="container mx-auto px-4 py-10">
-    <div class="bg-white shadow-xl rounded-xl p-8">
-<pre class='whitespace-pre-wrap text-sm text-gray-800'>
 <?php
 require 'db.php';
 $message = "";
@@ -40,36 +27,27 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $confirm = $_POST['confirm_password'] ?? '';
 
     if (!$password || !$confirm) {
-        $message = "Por favor completa ambos campos.";
+        $message = "⚠ Por favor completa ambos campos.";
     } elseif ($password !== $confirm) {
-        $message = "Las contraseñas no coinciden.";
+        $message = "❌ Las contraseñas no coinciden.";
     } else {
         $hash = password_hash($password, PASSWORD_DEFAULT);
         $stmt = $pdo->prepare("UPDATE users SET password = ?, reset_token = NULL, reset_expiry = NULL WHERE id = ?");
         $stmt->execute([$hash, $user['id']]);
 
-        $message = "✅ Contraseña actualizada con éxito. Puedes <a href='login.php' class='text-success fw-bold'>iniciar sesión</a> ahora.";
+        $message = "✅ Contraseña actualizada con éxito.";
         $showForm = false;
     }
 }
 ?>
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <title>Resetear contraseña</title>
+  <title>Restablecer contraseña</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      height: 100%;
-      overflow: hidden;
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    }
-
     #particles-js {
       position: fixed;
       width: 100%;
@@ -77,77 +55,42 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
       z-index: -1;
       background: linear-gradient(to right, #0d1b2a, #1b263b);
     }
-
-    .card {
-      position: relative;
-      z-index: 2;
-      border-radius: 1rem;
-      min-width: 350px;
-      padding: 30px;
-      background-color: #212529;
-      color: white;
-      box-shadow: 0 0 20px rgba(0,0,0,0.3);
-      margin: auto;
-      top: 20vh;
-    }
-
-    label {
-      font-weight: 600;
-    }
-
-    .btn-primary {
-      background: #2575fc;
-      border: none;
-      font-weight: 600;
-    }
-
-    .btn-primary:hover {
-      background: #1a5edb;
-    }
-
-    .alert {
-      font-size: 0.95rem;
-    }
-
-    .container {
-      height: 100vh;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      position: relative;
-      z-index: 2;
-    }
   </style>
 </head>
-<body>
-
+<body class="font-sans text-white">
   <div id="particles-js"></div>
 
-  <div class="container">
-    <div class="card">
-      <h4 class="mb-3">Restablecer contraseña</h4>
+  <div class="flex items-center justify-center min-h-screen px-4">
+    <div class="bg-gray-900 bg-opacity-90 rounded-2xl shadow-2xl p-8 w-full max-w-md">
+      <h2 class="text-2xl font-bold text-center text-blue-400 mb-6">🔑 Restablecer Contraseña</h2>
 
       <?php if ($message): ?>
-        <div class="alert alert-info"><?php echo $message; ?></div>
+        <div class="bg-blue-800 text-white px-4 py-2 rounded mb-4 text-sm text-center">
+          <?php echo $message; ?>
+        </div>
       <?php endif; ?>
 
       <?php if ($showForm): ?>
-      <form method="POST">
-        <div class="mb-3">
-          <label for="password" class="form-label">Nueva contraseña</label>
-          <input type="password" class="form-control" id="password" name="password" required />
+      <form method="POST" class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium">Nueva contraseña</label>
+          <input type="password" name="password" class="w-full bg-gray-800 border border-gray-700 rounded p-2 text-white" required>
         </div>
-        <div class="mb-3">
-          <label for="confirm_password" class="form-label">Confirmar contraseña</label>
-          <input type="password" class="form-control" id="confirm_password" name="confirm_password" required />
+        <div>
+          <label class="block text-sm font-medium">Confirmar contraseña</label>
+          <input type="password" name="confirm_password" class="w-full bg-gray-800 border border-gray-700 rounded p-2 text-white" required>
         </div>
-        <button type="submit" class="btn btn-primary w-100">Actualizar contraseña</button>
+        <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 py-2 rounded text-lg">Actualizar Contraseña</button>
       </form>
       <?php endif; ?>
+
+      <!-- Botón para volver siempre -->
+      <div class="mt-6 text-center">
+        <a href="index.php" class="inline-block bg-gray-700 hover:bg-gray-800 px-4 py-2 rounded text-white text-sm transition">← Volver al inicio de sesión</a>
+      </div>
     </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/particles.js"></script>
   <script>
     particlesJS("particles-js", {
@@ -180,11 +123,5 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
       retina_detect: true
     });
   </script>
-</body>
-</html>
-
-</pre>
-    </div>
-  </div>
 </body>
 </html>

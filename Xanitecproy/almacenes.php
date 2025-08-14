@@ -31,12 +31,12 @@ try {
                 $mensaje = "Error al agregar almacén.";
             }
         } elseif ($post_accion === 'editar' && $id > 0) {
-            $stmt = $pdo->prepare("EXEC actualizar_almacen :id, :nombre, :ubicacion, :responsable, :usuario");
+            // CORRECCIÓN: usar el nombre correcto del procedimiento y quitar :usuario
+            $stmt = $pdo->prepare("EXEC editar_almacen :id, :nombre, :ubicacion, :responsable");
             $stmt->bindParam(':id', $id, PDO::PARAM_INT);
             $stmt->bindParam(':nombre', $nombre);
             $stmt->bindParam(':ubicacion', $ubicacion);
             $stmt->bindParam(':responsable', $responsable);
-            $stmt->bindParam(':usuario', $usuario);
             if ($stmt->execute()) {
                 header("Location: almacenes.php?accion=listar&msg=actualizado");
                 exit;
@@ -79,6 +79,7 @@ if (($accion === 'editar' || $accion === 'ver') && $id > 0) {
     if (!$data) {
         $mensaje = "Almacén no encontrado.";
         $accion = 'listar';
+        $data = ['nombre'=>'', 'ubicacion'=>'', 'responsable'=>''];
     }
 }
 ?>
